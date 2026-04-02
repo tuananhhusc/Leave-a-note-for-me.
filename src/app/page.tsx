@@ -33,8 +33,8 @@ export default function Home() {
           transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
         >
           <motion.h1
-            className="text-4xl sm:text-5xl md:text-[3.5rem] font-bold text-blue-600 leading-tight mb-8 tracking-wide"
-            style={{ textShadow: '0 4px 16px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)' }}
+            className="text-4xl sm:text-5xl md:text-[3.5rem] font-bold text-transparent bg-clip-text bg-gradient-to-br from-sky-400 to-blue-600 leading-tight mb-8 tracking-wide pb-1"
+            style={{ filter: 'drop-shadow(0 4px 12px rgba(14, 165, 233, 0.15))' }}
             initial={{ opacity: 0, filter: 'blur(4px)' }}
             animate={{ opacity: 1, filter: 'blur(0px)' }}
             transition={{ delay: 0.2, duration: 1.2, ease: "easeOut" }}
