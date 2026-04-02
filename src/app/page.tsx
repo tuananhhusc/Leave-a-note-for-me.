@@ -1,65 +1,94 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import WriteNoteModal from '@/components/WriteNoteModal';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
 
 export default function Home() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const router = useRouter();
+
+  const handleNoteCreated = () => {
+    // When a note is created on the main page, automatically navigate to the wall
+    router.push('/wall');
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div 
+      className="relative flex flex-col flex-1 items-center justify-center min-h-[calc(100vh-100px)] p-4 sm:p-8 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/ysof1.svg')" }}
+    >
+      
+      {/* Header */}
+      <motion.header
+        className="relative z-10 text-center max-w-2xl mx-auto w-full p-4 sm:p-8"
+        initial={{ opacity: 0, y: -20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, type: 'spring', bounce: 0.4 }}
+      >
+        <motion.div
+          animate={{ y: [0, -6, 0] }}
+          transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+        >
+          <motion.h1
+            className="text-4xl sm:text-5xl md:text-[3.5rem] font-bold text-white leading-tight mb-8 tracking-wide"
+            style={{ textShadow: '0 4px 16px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)' }}
+            initial={{ opacity: 0, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, filter: 'blur(0px)' }}
+            transition={{ delay: 0.2, duration: 1.2, ease: "easeOut" }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Hãy Để Lại Một Mảnh Ký Ức
+            <br className="hidden sm:block" />
+            Cho YSOF Trong Tương Lai <span className="inline-block animate-pulse">💙</span>
+          </motion.h1>
+        </motion.div>
+        
+        <motion.p
+          className="text-lg sm:text-xl text-white mb-12 font-semibold drop-shadow-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4, duration: 0.5 }}
+        >
+          Viết một note ngắn, dán lên bức tường sự kiện, và lưu giữ khoảnh khắc này mãi mãi ✨
+        </motion.p>
+        
+        <motion.div 
+          className="flex flex-col sm:flex-row items-center justify-center gap-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, y: [0, -5, 0] }}
+          transition={{ 
+            opacity: { delay: 0.6, duration: 0.5 },
+            y: { repeat: Infinity, duration: 3, ease: "easeInOut", delay: 1 } 
+          }}
+        >
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="w-full sm:w-auto px-8 py-4 rounded-full text-white font-bold text-lg shadow-xl hover:scale-105 transition-all duration-300 active:scale-95 group"
+            style={{
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #4f46e5 100%)',
+              boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)',
+            }}
           >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <span className="inline-block group-hover:-rotate-6 transition-transform mr-2">✍️</span> Viết một note mới
+          </button>
+          
+          <Link
+            href="/wall"
+            className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/80 backdrop-blur-sm text-blue-900 font-bold text-lg shadow-lg hover:bg-white border focus:outline-none focus:ring-2 focus:ring-blue-400 hover:scale-105 transition-all duration-300 active:scale-95 group"
+          >
+            <span className="inline-block group-hover:scale-110 transition-transform mr-2">👀</span> Xem bức tường
+          </Link>
+        </motion.div>
+      </motion.header>
+
+      {/* Write note modal */}
+      <WriteNoteModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onNoteCreated={handleNoteCreated}
+      />
     </div>
   );
 }
