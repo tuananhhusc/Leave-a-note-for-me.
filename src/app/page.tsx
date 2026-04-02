@@ -33,7 +33,7 @@ export default function Home() {
           transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
         >
           <motion.h1
-            className="text-4xl sm:text-5xl md:text-[3.5rem] font-bold text-white leading-tight mb-8 tracking-wide"
+            className="text-4xl sm:text-5xl md:text-[3.5rem] font-bold text-blue-600 leading-tight mb-8 tracking-wide"
             style={{ textShadow: '0 4px 16px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)' }}
             initial={{ opacity: 0, filter: 'blur(4px)' }}
             animate={{ opacity: 1, filter: 'blur(0px)' }}
