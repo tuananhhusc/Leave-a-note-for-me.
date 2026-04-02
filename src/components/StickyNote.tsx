@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Note } from '@/lib/supabase';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 const themeStyles: Record<Note['theme'], { bg: string; text: string; shadow: string }> = {
   white: {
@@ -45,7 +45,13 @@ type StickyNoteProps = {
 };
 
 export default function StickyNote({ note, index, isNew = false }: StickyNoteProps) {
+  const [mounted, setMounted] = useState(false);
   const style = themeStyles[note.theme] || themeStyles.white;
+
+  // Set mounted to true after first render to ensure client-only features
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const floatDelay = useMemo(() => Math.random() * 3, []);
   const floatDuration = useMemo(() => 4 + Math.random() * 2, []);
@@ -112,7 +118,7 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
           {/* Content */}
           <p
             className="text-sm sm:text-base leading-relaxed break-words"
-            style={{ fontFamily: "'Caveat', cursive", fontSize: '1.1rem' }}
+            style={{ fontFamily: "var(--font-handwriting)", fontSize: '1.1rem' }}
           >
             {note.content}
           </p>
@@ -125,7 +131,7 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
               — {note.author || 'Ẩn danh'}
             </span>
             <span className="text-[9px] sm:text-[10px] opacity-40 whitespace-nowrap">
-              {relativeTime(note.created_at)}
+              {mounted ? relativeTime(note.created_at) : '...'}
             </span>
           </div>
         </div>
@@ -133,3 +139,4 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
     </motion.div>
   );
 }
+

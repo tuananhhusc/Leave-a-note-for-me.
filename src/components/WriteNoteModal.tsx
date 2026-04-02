@@ -166,7 +166,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                     }}
                     placeholder="Bạn muốn nói gì với YSOF trong tương lai...?"
                     className="w-full h-28 px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm sm:text-base resize-none focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
-                    style={{ fontFamily: "'Caveat', cursive", fontSize: '1.15rem' }}
+                    style={{ fontFamily: "var(--font-handwriting)", fontSize: '1.15rem' }}
                   />
                   <div className="flex justify-end mt-1">
                     <span
