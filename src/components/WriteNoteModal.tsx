@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import { supabase, Note } from '@/lib/supabase';
+import { containsProfanity, getProfanityWarning } from '@/lib/profanity';
 
 type Theme = Note['theme'];
 
@@ -47,6 +48,12 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
   const handleSubmit = useCallback(async () => {
     if (!content.trim()) {
       setError('Hãy viết gì đó nhé! 💙');
+      return;
+    }
+
+    // Check for profanity
+    if (containsProfanity(content) || containsProfanity(author)) {
+      setError(getProfanityWarning());
       return;
     }
 
@@ -202,7 +209,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">
                     Màu note
                   </label>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-2.5">
                     {themes.map((t) => (
                       <button
                         key={t.value}

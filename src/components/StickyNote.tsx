@@ -1,8 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Note } from '@/lib/supabase';
-import { useMemo, useState, useEffect } from 'react';
+import { Note, supabase } from '@/lib/supabase';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 const themeStyles: Record<Note['theme'], { bg: string; text: string; shadow: string }> = {
   white: {
@@ -62,28 +62,67 @@ type StickyNoteProps = {
   note: Note;
   index: number;
   isNew?: boolean;
+  onClick?: (note: Note) => void;
+  onLikeUpdate?: (noteId: string, newLikes: number) => void;
 };
 
-export default function StickyNote({ note, index, isNew = false }: StickyNoteProps) {
+export default function StickyNote({ note, index, isNew = false, onClick, onLikeUpdate }: StickyNoteProps) {
   const [mounted, setMounted] = useState(false);
+  const [likes, setLikes] = useState(note.likes || 0);
+  const [hasLiked, setHasLiked] = useState(false);
+  const [showMiniHeart, setShowMiniHeart] = useState(false);
   const style = themeStyles[note.theme] || themeStyles.white;
 
-  // Set mounted to true after first render to ensure client-only features
   useEffect(() => {
     setMounted(true);
-  }, []);
+    try {
+      const likedNotes = JSON.parse(localStorage.getItem('ysof_liked_notes') || '[]');
+      setHasLiked(likedNotes.includes(note.id));
+    } catch {
+      // ignore
+    }
+  }, [note.id]);
+
+  // Sync likes from parent
+  useEffect(() => {
+    setLikes(note.likes || 0);
+  }, [note.likes]);
 
   const floatDelay = useMemo(() => Math.random() * 3, []);
   const floatDuration = useMemo(() => 4 + Math.random() * 2, []);
 
+  const handleLike = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (hasLiked) return;
+
+    const newLikes = likes + 1;
+    setLikes(newLikes);
+    setHasLiked(true);
+    setShowMiniHeart(true);
+    setTimeout(() => setShowMiniHeart(false), 800);
+
+    try {
+      const likedNotes = JSON.parse(localStorage.getItem('ysof_liked_notes') || '[]');
+      likedNotes.push(note.id);
+      localStorage.setItem('ysof_liked_notes', JSON.stringify(likedNotes));
+    } catch { /* ignore */ }
+
+    await supabase
+      .from('ysof_notes')
+      .update({ likes: newLikes })
+      .eq('id', note.id);
+
+    onLikeUpdate?.(note.id, newLikes);
+  }, [hasLiked, likes, note.id, onLikeUpdate]);
+
   return (
     <motion.div
-      className={`absolute w-[160px] sm:w-[180px] md:w-[200px] cursor-default group`}
+      className="absolute w-[160px] sm:w-[180px] md:w-[200px] cursor-pointer group"
       style={{
         left: `${note.x_percent}%`,
         top: `${note.y_percent}%`,
         zIndex: index + 1,
-        transform: `translate(-50%, -50%)`,
+        transform: 'translate(-50%, -50%)',
       }}
       initial={
         isNew
@@ -107,6 +146,7 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
         rotate: 0,
         transition: { duration: 0.2 },
       }}
+      onClick={() => onClick?.(note)}
     >
       {/* Idle floating animation wrapper */}
       <motion.div
@@ -125,6 +165,7 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
         {/* Note card */}
         <div
           className={`
+            relative
             ${style.bg} ${style.text} ${style.shadow}
             rounded-lg p-4 pt-5
             border border-white/60
@@ -135,21 +176,47 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
           {/* Fold corner effect */}
           <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-r-[20px] border-t-transparent border-r-white/30 rounded-bl-sm" />
 
+          {/* Mini heart animation */}
+          {showMiniHeart && (
+            <motion.span
+              className="absolute -top-3 right-2 text-lg pointer-events-none"
+              initial={{ opacity: 1, y: 0, scale: 0.5 }}
+              animate={{ opacity: 0, y: -20, scale: 1.5 }}
+              transition={{ duration: 0.7 }}
+            >
+              💙
+            </motion.span>
+          )}
+
           {/* Content */}
           <p
             className="text-sm sm:text-base leading-relaxed break-words"
-            style={{ fontFamily: "var(--font-handwriting)", fontSize: '1.1rem' }}
+            style={{ fontFamily: 'var(--font-handwriting)', fontSize: '1.1rem' }}
           >
             {note.content}
           </p>
 
           {/* Footer */}
-          <div className="mt-3 pt-2 border-t border-black/5 flex items-center justify-between gap-2">
+          <div className="mt-3 pt-2 border-t border-black/5 flex items-center justify-between gap-1">
             <span
-              className="text-[10px] sm:text-xs font-medium opacity-60 truncate max-w-[60%]"
+              className="text-[10px] sm:text-xs font-medium opacity-60 truncate max-w-[45%]"
             >
               — {note.author || 'Ẩn danh'}
             </span>
+
+            {/* Like button (inline) */}
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full transition-all ${
+                hasLiked
+                  ? 'text-sky-500'
+                  : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:text-sky-500'
+              }`}
+            >
+              <span className="text-xs">{hasLiked ? '💙' : '🤍'}</span>
+              {likes > 0 && <span>{likes}</span>}
+            </button>
+
             <span className="text-[9px] sm:text-[10px] opacity-40 whitespace-nowrap">
               {mounted ? relativeTime(note.created_at) : '...'}
             </span>
@@ -159,4 +226,3 @@ export default function StickyNote({ note, index, isNew = false }: StickyNotePro
     </motion.div>
   );
 }
-

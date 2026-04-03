@@ -17,9 +17,15 @@ export function getSupabase(): SupabaseClient {
     return new Proxy({} as SupabaseClient, {
       get(_target, prop) {
         if (typeof prop === 'symbol' || prop === 'then' || prop === 'catch' || prop === 'finally' || prop === '$$typeof') return undefined;
-        if (prop === 'from') return () => ({ select: () => ({ order: () => Promise.resolve({ data: [], error: null }) }), insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('No Supabase credentials') }) }) }) });
+        if (prop === 'from') return () => ({
+          select: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
+          insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('No Supabase credentials') }) }) }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        });
         if (prop === 'channel') return () => ({ on: () => ({ subscribe: () => {} }), unsubscribe: () => {} });
         if (prop === 'removeChannel') return () => {};
+        if (prop === 'rpc') return () => Promise.resolve({ data: null, error: null });
         return () => {};
       }
     });
@@ -47,5 +53,6 @@ export type Note = {
   x_percent: number;
   y_percent: number;
   rotation: number;
+  likes: number;
   created_at: string;
 };

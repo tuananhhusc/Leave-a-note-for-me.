@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import WriteNoteModal from '@/components/WriteNoteModal';
+import Particles from '@/components/Particles';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -20,6 +21,8 @@ export default function Home() {
       className="relative flex flex-col flex-1 items-center justify-center min-h-[calc(100vh-100px)] p-4 sm:p-8 bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/ysof1.svg')" }}
     >
+      {/* Particles layer */}
+      <Particles />
       
       {/* Header */}
       <motion.header
