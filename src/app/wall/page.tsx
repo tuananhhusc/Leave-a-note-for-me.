@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 
 const BATCH_SIZE = 30;
+const NOTES_PER_PAGE = 15;
 
 export default function WallPage() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -251,21 +252,34 @@ export default function WallPage() {
           )}
         </AnimatePresence>
 
-        {/* Notes */}
-        {visibleNotes.map((note, index) => (
-          <StickyNote
-            key={note.id}
-            note={note}
-            index={index}
-            isNew={newNoteIds.has(note.id)}
-            onClick={setSelectedNote}
-            onLikeUpdate={handleLikeUpdate}
-          />
-        ))}
+        {/* Notes Panels */}
+        <div className="flex flex-col w-full relative">
+          {Array.from({ length: Math.ceil(visibleNotes.length / NOTES_PER_PAGE) }).map((_, pageIndex) => {
+            const pageNotes = visibleNotes.slice(pageIndex * NOTES_PER_PAGE, (pageIndex + 1) * NOTES_PER_PAGE);
+            
+            return (
+              <div 
+                key={pageIndex} 
+                className="relative w-full h-[700px] sm:h-[800px] md:h-screen shrink-0"
+              >
+                {pageNotes.map((note, idxInPage) => (
+                  <StickyNote
+                    key={note.id}
+                    note={note}
+                    index={pageIndex * NOTES_PER_PAGE + idxInPage}
+                    isNew={newNoteIds.has(note.id)}
+                    onClick={setSelectedNote}
+                    onLikeUpdate={handleLikeUpdate}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
 
         {/* Lazy loading sentinel */}
         {visibleCount < filteredNotes.length && (
-          <div ref={sentinelRef} className="absolute bottom-0 w-full h-20" />
+          <div ref={sentinelRef} className="relative bottom-0 w-full h-20" />
         )}
       </div>
 
