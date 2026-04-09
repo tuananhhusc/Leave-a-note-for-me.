@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { supabase, Note, normalizeNote, NOTES_TABLE, NOTE_COLUMNS } from '@/lib/supabase';
+import { supabase, Note, normalizeNote, NOTES_TABLE, NOTE_PUBLIC_COLUMNS } from '@/lib/supabase';
 import StickyNote from '@/components/StickyNote';
 import FloatingButton from '@/components/FloatingButton';
 import WriteNoteModal from '@/components/WriteNoteModal';
@@ -12,62 +12,7 @@ import AmbientSound from '@/components/AmbientSound';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 
-const BATCH_SIZE = 30;
-const NOTES_PER_PAGE = 12;
-
-// ── Grid layout algorithm ────────────────────────────────────────
-// Distributes notes in a grid with brick-pattern stagger + deterministic jitter
-// to prevent overlap while keeping an organic, hand-placed look.
-function computeGridLayout(
-  notes: Note[],
-): { x: number; y: number }[] {
-  const count = notes.length;
-  if (count === 0) return [];
-
-  // Determine optimal grid dimensions
-  let cols: number, rows: number;
-  if (count <= 2) { cols = 2; rows = 1; }
-  else if (count <= 4) { cols = 2; rows = 2; }
-  else if (count <= 6) { cols = 3; rows = 2; }
-  else if (count <= 9) { cols = 3; rows = 3; }
-  else { cols = 4; rows = 3; }
-
-  // Safe margins (% of container)
-  const PAD_TOP = 8;
-  const PAD_BOTTOM = 10;
-  const PAD_X = 8;
-
-  const usableW = 100 - 2 * PAD_X;   // 84%
-  const usableH = 100 - PAD_TOP - PAD_BOTTOM; // 82%
-
-  const cellW = usableW / cols;
-  const cellH = usableH / rows;
-
-  return notes.map((note, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    // Brick-pattern stagger: odd rows shift right by half a cell
-    const staggerX = row % 2 === 1 ? cellW * 0.25 : 0;
-
-    // Deterministic jitter derived from the note's stored random values
-    // This ensures the same note always gets the same jitter.
-    const seed1 = ((note.x_percent * 7 + note.y_percent * 13 + i * 17) % 100) / 100;
-    const seed2 = ((note.y_percent * 11 + note.x_percent * 3 + i * 7) % 100) / 100;
-    const jitterX = (seed1 - 0.5) * cellW * 0.3;
-    const jitterY = (seed2 - 0.5) * cellH * 0.25;
-
-    const x = PAD_X + cellW * (col + 0.5) + staggerX + jitterX;
-    const y = PAD_TOP + cellH * (row + 0.5) + jitterY;
-
-    // Clamp so notes never go off-screen
-    return {
-      x: Math.max(6, Math.min(94, x)),
-      y: Math.max(6, Math.min(92, y)),
-    };
-  });
-}
-// ─────────────────────────────────────────────────────────────────
+const BATCH_SIZE = 40;
 
 export default function WallPage() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -87,7 +32,7 @@ export default function WallPage() {
       try {
         const { data, error } = await supabase
           .from(NOTES_TABLE)
-          .select(NOTE_COLUMNS)
+          .select(NOTE_PUBLIC_COLUMNS)
           .order('created_at', { ascending: true });
 
         if (error) {
@@ -222,7 +167,7 @@ export default function WallPage() {
 
   return (
     <div 
-      className="relative flex flex-col min-h-screen overflow-hidden bg-cover bg-center bg-no-repeat bg-[url('/ysof4.svg')] sm:bg-[url('/ysof2.svg')]"
+      className="relative flex flex-col min-h-screen bg-cover bg-center bg-no-repeat bg-[url('/ysof4.svg')] sm:bg-[url('/ysof2.svg')]"
     >
       {/* Particles layer */}
       <Particles />
@@ -267,13 +212,13 @@ export default function WallPage() {
       {/* Wall area */}
       <div
         ref={wallRef}
-        className="relative flex-1 min-h-[600px] sm:min-h-[700px] md:min-h-screen z-10"
+        className="relative flex-1 z-10 pt-20 sm:pt-24 pb-24"
       >
         {/* Loading state */}
         <AnimatePresence>
           {isLoading && (
             <motion.div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+              className="flex flex-col items-center justify-center gap-3 py-32"
               exit={{ opacity: 0 }}
             >
               <div className="w-10 h-10 border-4 border-sky-100 border-t-sky-400 rounded-full animate-spin" />
@@ -286,7 +231,7 @@ export default function WallPage() {
         <AnimatePresence>
           {!isLoading && filteredNotes.length === 0 && (
             <motion.div
-              className="absolute inset-0 flex items-center justify-center"
+              className="flex items-center justify-center py-32"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -316,37 +261,25 @@ export default function WallPage() {
           )}
         </AnimatePresence>
 
-        {/* Notes Panels */}
-        <div className="flex flex-col w-full relative">
-          {Array.from({ length: Math.ceil(visibleNotes.length / NOTES_PER_PAGE) }).map((_, pageIndex) => {
-            const pageNotes = visibleNotes.slice(pageIndex * NOTES_PER_PAGE, (pageIndex + 1) * NOTES_PER_PAGE);
-            const positions = computeGridLayout(pageNotes);
-
-            return (
-              <div 
-                key={pageIndex} 
-                className="relative w-full h-[700px] sm:h-[800px] md:h-screen shrink-0"
-              >
-                {pageNotes.map((note, idxInPage) => (
-                  <StickyNote
-                    key={note.id}
-                    note={note}
-                    index={pageIndex * NOTES_PER_PAGE + idxInPage}
-                    isNew={newNoteIds.has(note.id)}
-                    layoutX={positions[idxInPage]?.x}
-                    layoutY={positions[idxInPage]?.y}
-                    onClick={setSelectedNote}
-                    onLikeUpdate={handleLikeUpdate}
-                  />
-                ))}
-              </div>
-            );
-          })}
-        </div>
+        {/* Notes Grid - left to right, top to bottom */}
+        {!isLoading && visibleNotes.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 px-4 sm:px-6 md:px-8">
+            {visibleNotes.map((note, idx) => (
+              <StickyNote
+                key={note.id}
+                note={note}
+                index={idx}
+                isNew={newNoteIds.has(note.id)}
+                onClick={setSelectedNote}
+                onLikeUpdate={handleLikeUpdate}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Lazy loading sentinel */}
         {visibleCount < filteredNotes.length && (
-          <div ref={sentinelRef} className="relative bottom-0 w-full h-20" />
+          <div ref={sentinelRef} className="w-full h-20" />
         )}
       </div>
 

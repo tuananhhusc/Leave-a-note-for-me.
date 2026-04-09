@@ -47,12 +47,17 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 export const NOTES_TABLE = 'toi_va_ban_notes';
 
-export const NOTE_COLUMNS = 'id, content, author, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, hidden, created_at';
+// Public columns (no email - email is admin-only)
+export const NOTE_PUBLIC_COLUMNS = 'id, content, author, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, hidden, created_at';
+
+// All columns including email (for admin/server-side use)
+export const NOTE_COLUMNS = 'id, content, author, email, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, hidden, created_at';
 
 export type Note = {
   id: string;
   content: string;
   author: string;
+  email?: string | null;
   theme: 'white' | 'light-blue' | 'dark-blue' | 'mint-green' | 'lavender' | 'soft-pink' | 'sun-peach';
   x_percent: number;
   y_percent: number;
@@ -93,6 +98,7 @@ export function normalizeNote(raw: Partial<Note> & Record<string, unknown>): Not
     y_percent: typeof raw.y_percent === 'number' ? raw.y_percent : 50,
     rotation: typeof raw.rotation === 'number' ? raw.rotation : 0,
     likes: typeof raw.likes === 'number' ? raw.likes : 0,
+    email: typeof raw.email === 'string' ? raw.email : null,
     admin_reply: typeof raw.admin_reply === 'string' ? raw.admin_reply : null,
     replied_at: typeof raw.replied_at === 'string' ? raw.replied_at : null,
     hidden: typeof raw.hidden === 'boolean' ? raw.hidden : false,

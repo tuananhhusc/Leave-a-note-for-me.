@@ -7,8 +7,9 @@
 -- 1) Create table (or keep existing) with latest columns
 CREATE TABLE IF NOT EXISTS public.toi_va_ban_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  content TEXT NOT NULL CHECK (char_length(content) <= 150),
+  content TEXT NOT NULL CHECK (char_length(content) <= 400),
   author VARCHAR(100) DEFAULT 'Ẩn danh',
+  email VARCHAR(255) NOT NULL,
   theme VARCHAR(20) NOT NULL DEFAULT 'white'
     CHECK (theme IN ('white', 'light-blue', 'dark-blue', 'mint-green', 'lavender', 'soft-pink', 'sun-peach')),
   x_percent FLOAT NOT NULL CHECK (x_percent BETWEEN 0 AND 100),
@@ -22,10 +23,16 @@ CREATE TABLE IF NOT EXISTS public.toi_va_ban_notes (
 );
 
 -- 2) Safe migrations for existing tables
+ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS likes INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS admin_reply TEXT;
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false;
+
+-- Update content limit from 150 to 400
+ALTER TABLE public.toi_va_ban_notes DROP CONSTRAINT IF EXISTS toi_va_ban_notes_content_check;
+ALTER TABLE public.toi_va_ban_notes
+  ADD CONSTRAINT toi_va_ban_notes_content_check CHECK (char_length(content) <= 400);
 
 ALTER TABLE public.toi_va_ban_notes DROP CONSTRAINT IF EXISTS toi_va_ban_notes_admin_reply_check;
 ALTER TABLE public.toi_va_ban_notes

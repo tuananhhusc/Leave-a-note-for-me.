@@ -30,6 +30,7 @@ type WriteNoteModalProps = {
 export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: WriteNoteModalProps) {
   const [content, setContent] = useState('');
   const [author, setAuthor] = useState('');
+  const [email, setEmail] = useState('');
   const [theme, setTheme] = useState<Theme>('white');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -92,7 +93,9 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     }
   }, [isOpen]);
 
-  const maxChars = 150;
+  const maxChars = 400;
+
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
   const handleSubmit = useCallback(async () => {
     if (!content.trim()) {
@@ -100,7 +103,16 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
       return;
     }
 
-    // Check for profanity
+    if (!email.trim()) {
+      setError('Vui lòng nhập email để nhận phản hồi từ admin.');
+      return;
+    }
+
+    if (!isValidEmail(email.trim())) {
+      setError('Email không hợp lệ. Vui lòng kiểm tra lại.');
+      return;
+    }
+
     if (containsProfanity(content) || containsProfanity(author)) {
       setError(getProfanityWarning());
       return;
@@ -116,6 +128,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     const noteData = {
       content: content.trim(),
       author: author.trim() || 'Ẩn danh',
+      email: email.trim(),
       theme,
       x_percent: parseFloat(x_percent.toFixed(2)),
       y_percent: parseFloat(y_percent.toFixed(2)),
@@ -153,9 +166,10 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     // Reset form
     setContent('');
     setAuthor('');
+    setEmail('');
     setTheme('white');
     onClose();
-  }, [content, author, theme, onClose, onNoteCreated, showToast]);
+  }, [content, author, email, theme, onClose, onNoteCreated, showToast]);
 
   return (
     <AnimatePresence>
@@ -235,7 +249,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                     placeholder="Bạn muốn nói gì với Tôi và Bạn trong quá khứ, hiện tại, tương lai...?"
                     aria-label="Nội dung note"
                     aria-describedby="note-char-count"
-                    className="w-full h-28 px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm sm:text-base resize-none focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
+                    className="w-full h-36 px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm sm:text-base resize-none focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
                     style={{ fontFamily: "var(--font-handwriting)", fontSize: '1.15rem' }}
                   />
                   <div className="flex justify-end mt-1">
@@ -264,6 +278,23 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                     aria-label="Tên tác giả"
                     className="w-full px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
                   />
+                </div>
+
+                {/* Email input (required) */}
+                <div>
+                  <input
+                    id="note-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                    placeholder="Email của bạn (bắt buộc) *"
+                    aria-label="Email"
+                    required
+                    className="w-full px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1 ml-1">
+                    Email chỉ dùng để admin thông báo khi phản hồi, không hiển thị công khai.
+                  </p>
                 </div>
 
                 {/* Theme selector */}
@@ -321,11 +352,11 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                     id="submit-note-btn"
                     type="button"
                     onClick={handleSubmit}
-                    disabled={isSubmitting || !content.trim()}
+                    disabled={isSubmitting || !content.trim() || !email.trim()}
                     className={`
                       flex-1 py-3 px-4 rounded-xl text-white text-sm font-semibold transition-all active:scale-95
                       ${
-                        isSubmitting || !content.trim()
+                        isSubmitting || !content.trim() || !email.trim()
                           ? 'bg-gray-300 cursor-not-allowed'
                           : 'bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 shadow-md hover:shadow-lg'
                       }

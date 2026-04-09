@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Note, supabase, NOTES_TABLE } from '@/lib/supabase';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
+const TRUNCATE_LENGTH = 80;
+
 const themeStyles: Record<Note['theme'], { bg: string; text: string; shadow: string }> = {
   white: {
     bg: 'bg-[#fffef7]',
@@ -68,12 +70,17 @@ type StickyNoteProps = {
   onLikeUpdate?: (noteId: string, newLikes: number) => void;
 };
 
-export default function StickyNote({ note, index, isNew = false, layoutX, layoutY, onClick, onLikeUpdate }: StickyNoteProps) {
+export default function StickyNote({ note, index, isNew = false, onClick, onLikeUpdate }: StickyNoteProps) {
   const [mounted, setMounted] = useState(false);
   const [likes, setLikes] = useState(note.likes || 0);
   const [hasLiked, setHasLiked] = useState(false);
   const [showMiniHeart, setShowMiniHeart] = useState(false);
   const style = themeStyles[note.theme] || themeStyles.white;
+
+  const isTruncated = note.content.length > TRUNCATE_LENGTH;
+  const displayContent = isTruncated
+    ? note.content.slice(0, TRUNCATE_LENGTH) + '...'
+    : note.content;
 
   useEffect(() => {
     setMounted(true);
@@ -94,13 +101,14 @@ export default function StickyNote({ note, index, isNew = false, layoutX, layout
     }
   }, [note.id]);
 
-  // Sync likes from parent
   useEffect(() => {
     setLikes(note.likes || 0);
   }, [note.likes]);
 
-  const floatDelay = useMemo(() => Math.random() * 3, []);
-  const floatDuration = useMemo(() => 4 + Math.random() * 2, []);
+  const rotation = useMemo(() => {
+    const r = note.rotation || 0;
+    return Math.max(-6, Math.min(6, r * 0.4));
+  }, [note.rotation]);
 
   const handleLike = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -128,112 +136,104 @@ export default function StickyNote({ note, index, isNew = false, layoutX, layout
 
   return (
     <motion.div
-      className="absolute w-[160px] sm:w-[180px] md:w-[200px] cursor-pointer group"
-      style={{
-        left: `${layoutX ?? note.x_percent}%`,
-        top: `${layoutY ?? note.y_percent}%`,
-        zIndex: index + 1,
-        transform: 'translate(-50%, -50%)',
-      }}
+      className="cursor-pointer group"
+      style={{ rotate: `${rotation}deg` }}
       initial={
         isNew
-          ? { opacity: 0, scale: 0.3, y: 300, x: 0 }
-          : { opacity: 0, scale: 0.8 }
+          ? { opacity: 0, scale: 0.3, y: 60 }
+          : { opacity: 0, scale: 0.9, y: 20 }
       }
-      animate={{
-        opacity: 1,
-        scale: 1,
-        y: 0,
-        x: 0,
-      }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={
         isNew
-          ? { type: 'spring', stiffness: 120, damping: 14, duration: 0.8 }
-          : { delay: index * 0.05, duration: 0.4, ease: 'easeOut' }
+          ? { type: 'spring', stiffness: 120, damping: 14 }
+          : { delay: Math.min(index * 0.03, 0.5), duration: 0.35, ease: 'easeOut' }
       }
       whileHover={{
-        scale: 1.08,
-        zIndex: 999,
+        scale: 1.05,
         rotate: 0,
+        zIndex: 50,
         transition: { duration: 0.2 },
       }}
       onClick={() => onClick?.(note)}
     >
-      {/* Idle floating animation wrapper */}
-      <motion.div
-        animate={{ y: [0, -5, 0] }}
-        transition={{
-          duration: floatDuration,
-          delay: floatDelay,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-        style={{ rotate: `${note.rotation}deg` }}
+      {/* Pin */}
+      <div className="pin" />
+
+      {/* Note card */}
+      <div
+        className={`
+          relative
+          ${style.bg} ${style.text} ${style.shadow}
+          rounded-lg p-4 pt-5
+          border border-white/60
+          transition-shadow duration-300
+          group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]
+          min-h-[140px] flex flex-col
+        `}
       >
-        {/* Pin */}
-        <div className="pin" />
+        {/* Fold corner */}
+        <div className="absolute top-0 right-0 w-0 h-0 border-t-[18px] border-r-[18px] border-t-transparent border-r-white/30 rounded-bl-sm" />
 
-        {/* Note card */}
-        <div
-          className={`
-            relative
-            ${style.bg} ${style.text} ${style.shadow}
-            rounded-lg p-4 pt-5
-            border border-white/60
-            transition-shadow duration-300
-            group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]
-          `}
-        >
-          {/* Fold corner effect */}
-          <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-r-[20px] border-t-transparent border-r-white/30 rounded-bl-sm" />
-
-          {/* Mini heart animation */}
-          {showMiniHeart && (
-            <motion.span
-              className="absolute -top-3 right-2 text-lg pointer-events-none"
-              initial={{ opacity: 1, y: 0, scale: 0.5 }}
-              animate={{ opacity: 0, y: -20, scale: 1.5 }}
-              transition={{ duration: 0.7 }}
-            >
-              💙
-            </motion.span>
-          )}
-
-          {/* Content */}
-          <p
-            className="text-sm sm:text-base leading-relaxed break-words"
-            style={{ fontFamily: 'var(--font-handwriting)', fontSize: '1.1rem' }}
+        {/* Mini heart animation */}
+        {showMiniHeart && (
+          <motion.span
+            className="absolute -top-3 right-2 text-lg pointer-events-none"
+            initial={{ opacity: 1, y: 0, scale: 0.5 }}
+            animate={{ opacity: 0, y: -20, scale: 1.5 }}
+            transition={{ duration: 0.7 }}
           >
-            {note.content}
-          </p>
+            💙
+          </motion.span>
+        )}
 
-          {/* Footer */}
-          <div className="mt-3 pt-2 border-t border-black/5 flex items-center justify-between gap-1">
-            <span
-              className="text-[10px] sm:text-xs font-medium opacity-60 truncate max-w-[45%]"
-            >
-              — {note.author || 'Ẩn danh'}
-            </span>
+        {/* Content */}
+        <p
+          className="text-sm leading-relaxed break-words flex-1"
+          style={{ fontFamily: 'var(--font-handwriting)', fontSize: '1rem' }}
+        >
+          {displayContent}
+        </p>
 
-            {/* Like button (inline) */}
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full transition-all ${
-                hasLiked
-                  ? 'text-sky-500'
-                  : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:text-sky-500'
-              }`}
-            >
-              <span className="text-xs">{hasLiked ? '💙' : '🤍'}</span>
-              {likes > 0 && <span>{likes}</span>}
-            </button>
+        {isTruncated && (
+          <span className="text-[10px] text-sky-500 font-medium mt-1">
+            Nhấn để đọc tiếp...
+          </span>
+        )}
 
-            <span className="text-[9px] sm:text-[10px] opacity-40 whitespace-nowrap">
-              {mounted ? relativeTime(note.created_at) : '...'}
-            </span>
+        {/* Admin reply indicator */}
+        {note.admin_reply && (
+          <div className="mt-2 flex items-center gap-1 text-[10px] text-sky-600 font-medium">
+            <span>💬</span> Admin đã trả lời
           </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-3 pt-2 border-t border-black/5 flex items-center justify-between gap-1">
+          <span
+            className="text-[10px] sm:text-xs font-medium opacity-60 truncate max-w-[45%]"
+          >
+            — {note.author || 'Ẩn danh'}
+          </span>
+
+          <button
+            onClick={handleLike}
+            aria-label={hasLiked ? 'Đã thích' : 'Thích'}
+            className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full transition-all ${
+              hasLiked
+                ? 'text-sky-500'
+                : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:text-sky-500'
+            }`}
+          >
+            <span className="text-xs">{hasLiked ? '💙' : '🤍'}</span>
+            {likes > 0 && <span>{likes}</span>}
+          </button>
+
+          <span className="text-[9px] sm:text-[10px] opacity-40 whitespace-nowrap">
+            {mounted ? relativeTime(note.created_at) : '...'}
+          </span>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   );
 }

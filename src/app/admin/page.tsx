@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, Note, normalizeNote, NOTES_TABLE, NOTE_COLUMNS } from '@/lib/supabase';
+import { Note, normalizeNote } from '@/lib/supabase';
 import { getSupabaseErrorInfo } from '@/lib/errors';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -99,15 +99,17 @@ export default function AdminPage() {
     async function fetchNotes() {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from(NOTES_TABLE)
-          .select(NOTE_COLUMNS)
-          .order('created_at', { ascending: false });
+        const res = await fetch('/api/admin/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        const json = await res.json();
 
-        if (error) {
-          console.error('Error fetching notes:', error);
-        } else if (data) {
-          const fetchedNotes = (data as Record<string, unknown>[]).map(normalizeNote);
+        if (!res.ok) {
+          console.error('Error fetching notes:', json.error);
+        } else if (json.notes) {
+          const fetchedNotes = (json.notes as Record<string, unknown>[]).map(normalizeNote);
           setNotes(fetchedNotes);
           setReplyDrafts(
             fetchedNotes.reduce<Record<string, string>>((acc, note) => {
@@ -124,7 +126,7 @@ export default function AdminPage() {
     }
 
     fetchNotes();
-  }, [isAuth]);
+  }, [isAuth, password]);
 
   const handleDelete = useCallback(async (noteId: string) => {
     const pw = getAdminPasswordForApi();
@@ -528,12 +530,24 @@ export default function AdminPage() {
                   <p className="text-sm sm:text-base text-gray-800 break-words" style={{ fontFamily: 'var(--font-handwriting)' }}>
                     &ldquo;{note.content}&rdquo;
                   </p>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                  <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-gray-500">
                     <span>— {note.author || 'Ẩn danh'}</span>
                     <span>•</span>
                     <span>{new Date(note.created_at).toLocaleString('vi-VN')}</span>
                     <span>•</span>
                     <span>💙 {note.likes || 0}</span>
+                    {note.email && (
+                      <>
+                        <span>•</span>
+                        <a
+                          href={`mailto:${note.email}`}
+                          className="text-sky-600 hover:text-sky-800 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          📧 {note.email}
+                        </a>
+                      </>
+                    )}
                   </div>
 
                   <div className="mt-3">
