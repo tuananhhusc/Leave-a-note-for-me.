@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase, Note, normalizeNote, NOTES_TABLE } from '@/lib/supabase';
 import { containsProfanity, getProfanityWarning } from '@/lib/profanity';
@@ -38,12 +39,18 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
   const firstFocusRef = useRef<HTMLTextAreaElement>(null);
   const prefersReducedMotion = useReducedMotion();
 
-  const modalAnimation = useMemo(() => ({
-    initial: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
-    animate: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
-    exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
-    transition: prefersReducedMotion ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 25 },
-  }), [prefersReducedMotion]);
+  const modalAnimation = useMemo(() => {
+    const transition: Transition = prefersReducedMotion
+      ? { duration: 0.1 }
+      : { type: 'spring', stiffness: 300, damping: 25 };
+
+    return {
+      initial: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
+      animate: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
+      exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
+      transition,
+    };
+  }, [prefersReducedMotion]);
 
   // Handle Escape key to close modal
   useEffect(() => {

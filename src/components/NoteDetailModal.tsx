@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import { Note, supabase, NOTES_TABLE } from '@/lib/supabase';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/Toast';
@@ -41,12 +42,18 @@ export default function NoteDetailModal({ note, onClose, onLike }: NoteDetailMod
   const { showToast } = useToast();
   const prefersReducedMotion = useReducedMotion();
 
-  const modalAnimation = useMemo(() => ({
+  const modalAnimation = useMemo(() => {
+    const transition: Transition = prefersReducedMotion
+      ? { duration: 0.1 }
+      : { type: 'spring', stiffness: 300, damping: 25 };
+
+    return {
     initial: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7, y: 60 },
     animate: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
     exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7, y: 60 },
-    transition: prefersReducedMotion ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 25 },
-  }), [prefersReducedMotion]);
+      transition,
+    };
+  }, [prefersReducedMotion]);
 
   // Handle Escape key to close modal
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
