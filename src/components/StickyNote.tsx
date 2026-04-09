@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Note, supabase } from '@/lib/supabase';
+import { Note, supabase, NOTES_TABLE } from '@/lib/supabase';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
 const themeStyles: Record<Note['theme'], { bg: string; text: string; shadow: string }> = {
@@ -78,7 +78,16 @@ export default function StickyNote({ note, index, isNew = false, layoutX, layout
   useEffect(() => {
     setMounted(true);
     try {
-      const likedNotes = JSON.parse(localStorage.getItem('ysof_liked_notes') || '[]');
+      const oldKey = 'ysof_liked_notes';
+      const newKey = 'toi_va_ban_liked_notes';
+      const oldValue = localStorage.getItem(oldKey);
+      const newValue = localStorage.getItem(newKey);
+      if (oldValue !== null && newValue === null) {
+        localStorage.setItem(newKey, oldValue);
+        localStorage.removeItem(oldKey);
+      }
+
+      const likedNotes = JSON.parse(localStorage.getItem(newKey) || '[]');
       setHasLiked(likedNotes.includes(note.id));
     } catch {
       // ignore
@@ -104,13 +113,13 @@ export default function StickyNote({ note, index, isNew = false, layoutX, layout
     setTimeout(() => setShowMiniHeart(false), 800);
 
     try {
-      const likedNotes = JSON.parse(localStorage.getItem('ysof_liked_notes') || '[]');
+      const likedNotes = JSON.parse(localStorage.getItem('toi_va_ban_liked_notes') || '[]');
       likedNotes.push(note.id);
-      localStorage.setItem('ysof_liked_notes', JSON.stringify(likedNotes));
+      localStorage.setItem('toi_va_ban_liked_notes', JSON.stringify(likedNotes));
     } catch { /* ignore */ }
 
     await supabase
-      .from('ysof_notes')
+      .from(NOTES_TABLE)
       .update({ likes: newLikes })
       .eq('id', note.id);
 

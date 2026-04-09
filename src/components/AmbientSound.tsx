@@ -106,7 +106,16 @@ export default function AmbientSound() {
   // Save preference to localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ysof_ambient_sound');
+      const oldKey = 'ysof_ambient_sound';
+      const newKey = 'toi_va_ban_ambient_sound';
+      const oldValue = localStorage.getItem(oldKey);
+      const newValue = localStorage.getItem(newKey);
+      if (oldValue !== null && newValue === null) {
+        localStorage.setItem(newKey, oldValue);
+        localStorage.removeItem(oldKey);
+      }
+
+      const saved = localStorage.getItem(newKey);
       if (saved === 'true' && !isInitialized) {
         // Auto-play requires user gesture; we only remember preference UI
       }
@@ -117,7 +126,7 @@ export default function AmbientSound() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('ysof_ambient_sound', String(isPlaying));
+      localStorage.setItem('toi_va_ban_ambient_sound', String(isPlaying));
     } catch {
       // ignore
     }

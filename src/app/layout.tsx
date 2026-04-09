@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Quicksand, Caveat } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/Toast";
 
 const quicksand = Quicksand({
   subsets: ["latin", "vietnamese"],
@@ -13,14 +14,14 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: "Bức Tường Tương Lai YSOF — Hãy Để Lại Ký Ức Của Bạn",
+  title: "Bức Tường Tương Lai — Hãy Để Lại Ký Ức Của Bạn",
   description:
-    "Một bức tường kỹ thuật số nơi bạn có thể để lại những dòng ký ức, lời chúc và hy vọng cho tương lai YSOF. Viết một note và dán lên tường ngay!",
-  keywords: ["YSOF", "tương lai", "ký ức", "note", "bức tường"],
+    "Một bức tường kỹ thuật số nơi bạn có thể để lại những dòng ký ức, lời chúc và hy vọng cho Tôi và Bạn trong tương lai. Viết một note và dán lên tường ngay!",
+  keywords: ["tương lai", "ký ức", "note", "bức tường", "tôi và bạn"],
   openGraph: {
-    title: "Bức Tường Tương Lai YSOF",
+    title: "Bức Tường Tương Lai",
     description:
-      "Hãy để lại một mảnh ký ức cho YSOF trong tương lai 💙",
+      "Hãy để lại một mảnh ký ức cho Tôi và Bạn trong tương lai 💙",
     type: "website",
     locale: "vi_VN",
   },
@@ -67,9 +68,11 @@ export default function RootLayout({
         </div>
         
         {/* Main content layer */}
-        <div className="relative z-10 flex flex-col flex-1">
-          {children}
-        </div>
+        <ToastProvider>
+          <div className="relative z-10 flex flex-col flex-1">
+            {children}
+          </div>
+        </ToastProvider>
       </body>
     </html>
   );

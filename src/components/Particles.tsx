@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useReducedMotion } from '@/lib/useReducedMotion';
 
 interface Particle {
   x: number;
@@ -18,6 +19,7 @@ export default function Particles() {
   const animRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const handleResize = () => {
@@ -30,7 +32,7 @@ export default function Particles() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || dimensions.w === 0) return;
+    if (!canvas || dimensions.w === 0 || prefersReducedMotion) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -93,7 +95,9 @@ export default function Particles() {
     return () => {
       cancelAnimationFrame(animRef.current);
     };
-  }, [dimensions]);
+  }, [dimensions, prefersReducedMotion]);
+
+  if (prefersReducedMotion) return null;
 
   return (
     <canvas

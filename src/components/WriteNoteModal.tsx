@@ -1,9 +1,12 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useCallback, useEffect } from 'react';
-import { supabase, Note } from '@/lib/supabase';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { supabase, Note, normalizeNote, NOTES_TABLE } from '@/lib/supabase';
 import { containsProfanity, getProfanityWarning } from '@/lib/profanity';
+import { getSupabaseErrorInfo } from '@/lib/errors';
+import { useToast } from '@/components/Toast';
+import { useReducedMotion } from '@/lib/useReducedMotion';
 
 type Theme = Note['theme'];
 
@@ -30,11 +33,50 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [hasWrittenBefore, setHasWrittenBefore] = useState(false);
+  const { showToast } = useToast();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstFocusRef = useRef<HTMLTextAreaElement>(null);
+  const prefersReducedMotion = useReducedMotion();
+
+  const modalAnimation = useMemo(() => ({
+    initial: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
+    animate: prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 },
+    exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 40 },
+    transition: prefersReducedMotion ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 25 },
+  }), [prefersReducedMotion]);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Focus trap and auto-focus
+  useEffect(() => {
+    if (isOpen && firstFocusRef.current) {
+      setTimeout(() => firstFocusRef.current?.focus(), 100);
+    }
+  }, [isOpen, hasWrittenBefore]);
 
   useEffect(() => {
     if (isOpen && typeof window !== 'undefined') {
       try {
-        if (localStorage.getItem('ysof_note_written') === 'true') {
+        const oldKey = 'ysof_note_written';
+        const newKey = 'toi_va_ban_note_written';
+        const oldValue = localStorage.getItem(oldKey);
+        const newValue = localStorage.getItem(newKey);
+        if (oldValue !== null && newValue === null) {
+          localStorage.setItem(newKey, oldValue);
+          localStorage.removeItem(oldKey);
+        }
+
+        if (localStorage.getItem(newKey) === 'true') {
           setHasWrittenBefore(true);
         }
       } catch (e) {
@@ -74,7 +116,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     };
 
     const { data, error: dbError } = await supabase
-      .from('ysof_notes')
+      .from(NOTES_TABLE)
       .insert([noteData])
       .select()
       .single();
@@ -82,28 +124,31 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     setIsSubmitting(false);
 
     if (dbError) {
-      setError('Có lỗi xảy ra. Hãy thử lại nhé!');
-      console.error('Supabase insert error:', dbError);
+      const info = getSupabaseErrorInfo(dbError);
+      setError(info.hint || info.message || 'Có lỗi xảy ra. Hãy thử lại nhé!');
+      console.error('Supabase insert error:', info);
       return;
     }
 
     if (data && onNoteCreated) {
-      onNoteCreated(data as Note);
+      onNoteCreated(normalizeNote(data as Record<string, unknown>));
     }
 
     try {
-      localStorage.setItem('ysof_note_written', 'true');
+      localStorage.setItem('toi_va_ban_note_written', 'true');
       setHasWrittenBefore(true);
     } catch (e) {
       // Ignore localStorage access errors
     }
+
+    showToast('Note của bạn đã được dán lên tường! 📌', 'success');
 
     // Reset form
     setContent('');
     setAuthor('');
     setTheme('white');
     onClose();
-  }, [content, author, theme, onClose, onNoteCreated]);
+  }, [content, author, theme, onClose, onNoteCreated, showToast]);
 
   return (
     <AnimatePresence>
@@ -126,11 +171,15 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
 
           {/* Modal card */}
           <motion.div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="write-note-title"
             className="relative w-full max-w-md glass rounded-2xl p-6 sm:p-8"
-            initial={{ opacity: 0, scale: 0.85, y: 40 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.85, y: 40 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            initial={modalAnimation.initial}
+            animate={modalAnimation.animate}
+            exit={modalAnimation.exit}
+            transition={modalAnimation.transition}
             style={{
               background: 'rgba(255, 255, 255, 0.65)',
               backdropFilter: 'blur(24px)',
@@ -141,13 +190,13 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
           >
             {/* Header */}
             <div className="text-center mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+              <h2 id="write-note-title" className="text-xl sm:text-2xl font-bold text-gray-800">
                 {hasWrittenBefore ? 'Cảm ơn bạn nhé! 💖' : '✏️ Viết một note'}
               </h2>
               <p className="text-sm text-gray-500 mt-1">
                 {hasWrittenBefore 
                   ? 'Bạn đã để lại một note rồi. Bức tường xin giữ lại mảnh ký ức này nhé!'
-                  : 'Để lại một mảnh ký ức cho tương lai'}
+                  : 'Để lại một mảnh ký ức cho Tôi và Bạn'}
               </p>
             </div>
 
@@ -167,6 +216,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                 {/* Content textarea */}
                 <div>
                   <textarea
+                    ref={firstFocusRef}
                     id="note-content"
                     value={content}
                     onChange={(e) => {
@@ -175,17 +225,21 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                         setError('');
                       }
                     }}
-                    placeholder="Bạn muốn nói gì với YSOF trong tương lai...?"
+                    placeholder="Bạn muốn nói gì với Tôi và Bạn trong quá khứ, hiện tại, tương lai...?"
+                    aria-label="Nội dung note"
+                    aria-describedby="note-char-count"
                     className="w-full h-28 px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm sm:text-base resize-none focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
                     style={{ fontFamily: "var(--font-handwriting)", fontSize: '1.15rem' }}
                   />
                   <div className="flex justify-end mt-1">
                     <span
+                      id="note-char-count"
                       className={`text-xs transition-colors ${
                         content.length >= maxChars * 0.9
                           ? 'text-red-400'
                           : 'text-gray-400'
                       }`}
+                      aria-live="polite"
                     >
                       {content.length}/{maxChars}
                     </span>
@@ -200,20 +254,23 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                     value={author}
                     onChange={(e) => setAuthor(e.target.value.slice(0, 100))}
                     placeholder="Tên của bạn... (hoặc để trống để ẩn danh)"
+                    aria-label="Tên tác giả"
                     className="w-full px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/50 focus:border-sky-200 transition-all"
                   />
                 </div>
 
                 {/* Theme selector */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">
+                <div role="group" aria-labelledby="theme-label">
+                  <label id="theme-label" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">
                     Màu note
                   </label>
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Chọn màu note">
                     {themes.map((t) => (
                       <button
                         key={t.value}
                         type="button"
+                        role="radio"
+                        aria-checked={theme === t.value}
                         onClick={() => setTheme(t.value)}
                         className={`
                           w-10 h-10 rounded-full ${t.bg} border-2 transition-all duration-200
@@ -233,6 +290,7 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                 <AnimatePresence>
                   {error && (
                     <motion.p
+                      role="alert"
                       className="text-sm text-red-500 text-center"
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}

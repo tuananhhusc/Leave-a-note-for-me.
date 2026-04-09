@@ -1,55 +1,123 @@
 -- ============================================================
--- YSOF Future Wall — Database Schema (v2)
--- Run this in: Supabase Dashboard → SQL Editor → New Query
+-- Toi & Ban Wall — Production Schema + RLS (v3)
+-- Run this in: Supabase Dashboard -> SQL Editor -> New Query
+-- IMPORTANT: Replace admin email in policy before running.
 -- ============================================================
 
--- 1. Create the notes table (if not exists)
-CREATE TABLE IF NOT EXISTS ysof_notes (
+-- 1) Create table (or keep existing) with latest columns
+CREATE TABLE IF NOT EXISTS public.toi_va_ban_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   content TEXT NOT NULL CHECK (char_length(content) <= 150),
   author VARCHAR(100) DEFAULT 'Ẩn danh',
-  theme VARCHAR(20) NOT NULL DEFAULT 'white' CHECK (theme IN ('white', 'light-blue', 'dark-blue', 'mint-green', 'lavender', 'soft-pink', 'sun-peach')),
+  theme VARCHAR(20) NOT NULL DEFAULT 'white'
+    CHECK (theme IN ('white', 'light-blue', 'dark-blue', 'mint-green', 'lavender', 'soft-pink', 'sun-peach')),
   x_percent FLOAT NOT NULL CHECK (x_percent BETWEEN 0 AND 100),
   y_percent FLOAT NOT NULL CHECK (y_percent BETWEEN 0 AND 100),
   rotation FLOAT NOT NULL CHECK (rotation BETWEEN -15 AND 15),
   likes INTEGER NOT NULL DEFAULT 0,
+  admin_reply TEXT CHECK (char_length(admin_reply) <= 500),
+  replied_at TIMESTAMPTZ,
+  hidden BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Enable Realtime for this table
-ALTER PUBLICATION supabase_realtime ADD TABLE ysof_notes;
+-- 2) Safe migrations for existing tables
+ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS likes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS admin_reply TEXT;
+ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
+ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false;
 
--- 3. Enable Row Level Security
-ALTER TABLE ysof_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.toi_va_ban_notes DROP CONSTRAINT IF EXISTS toi_va_ban_notes_admin_reply_check;
+ALTER TABLE public.toi_va_ban_notes
+  ADD CONSTRAINT toi_va_ban_notes_admin_reply_check CHECK (char_length(admin_reply) <= 500);
 
--- 4. Allow anyone to read notes
-CREATE POLICY "Anyone can read notes"
-  ON ysof_notes
+ALTER TABLE public.toi_va_ban_notes DROP CONSTRAINT IF EXISTS toi_va_ban_notes_theme_check;
+ALTER TABLE public.toi_va_ban_notes
+  ADD CONSTRAINT toi_va_ban_notes_theme_check
+  CHECK (theme IN ('white', 'light-blue', 'dark-blue', 'mint-green', 'lavender', 'soft-pink', 'sun-peach'));
+
+-- 3) Realtime (idempotent: avoid duplicate table in publication)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_rel pr
+    JOIN pg_class c ON c.oid = pr.prrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_publication p ON p.oid = pr.prpubid
+    WHERE p.pubname = 'supabase_realtime'
+      AND n.nspname = 'public'
+      AND c.relname = 'toi_va_ban_notes'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.toi_va_ban_notes;
+  END IF;
+END
+$$;
+
+-- 4) Enable RLS
+ALTER TABLE public.toi_va_ban_notes ENABLE ROW LEVEL SECURITY;
+
+-- 5) Remove old permissive policies (if present)
+DROP POLICY IF EXISTS "Anyone can read notes" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Anyone can insert notes" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Anyone can update likes" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Anyone can delete notes" ON public.toi_va_ban_notes;
+
+DROP POLICY IF EXISTS "Public read notes" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Public insert notes" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Public update likes only" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Admin can update reply" ON public.toi_va_ban_notes;
+DROP POLICY IF EXISTS "Admin can delete notes" ON public.toi_va_ban_notes;
+
+-- 6) Public policies
+-- Public can only see non-hidden notes
+CREATE POLICY "Public read notes"
+  ON public.toi_va_ban_notes
   FOR SELECT
-  USING (true);
+  USING (hidden = false);
 
--- 5. Allow anyone to insert notes
-CREATE POLICY "Anyone can insert notes"
-  ON ysof_notes
+CREATE POLICY "Public insert notes"
+  ON public.toi_va_ban_notes
   FOR INSERT
   WITH CHECK (true);
 
--- 6. Allow anyone to update likes (for the heart/like feature)
-CREATE POLICY "Anyone can update likes"
-  ON ysof_notes
+-- Public can only update likes.
+-- admin_reply/replied_at must stay unchanged in this policy.
+CREATE POLICY "Public update likes only"
+  ON public.toi_va_ban_notes
   FOR UPDATE
   USING (true)
-  WITH CHECK (true);
+  WITH CHECK (
+    admin_reply IS NOT DISTINCT FROM (SELECT n.admin_reply FROM public.toi_va_ban_notes n WHERE n.id = toi_va_ban_notes.id)
+    AND replied_at IS NOT DISTINCT FROM (SELECT n.replied_at FROM public.toi_va_ban_notes n WHERE n.id = toi_va_ban_notes.id)
+  );
 
--- 7. Allow delete (for admin panel)
-CREATE POLICY "Anyone can delete notes"
-  ON ysof_notes
+-- 7) Admin-only policies
+-- Replace this email with your real admin account.
+-- Example: admin@toivaban.vn
+CREATE POLICY "Admin can update reply"
+  ON public.toi_va_ban_notes
+  FOR UPDATE
+  TO authenticated
+  USING ((auth.jwt() ->> 'email') = 'admin@yourdomain.com')
+  WITH CHECK ((auth.jwt() ->> 'email') = 'admin@yourdomain.com');
+
+CREATE POLICY "Admin can delete notes"
+  ON public.toi_va_ban_notes
   FOR DELETE
-  USING (true);
+  TO authenticated
+  USING ((auth.jwt() ->> 'email') = 'admin@yourdomain.com');
 
--- ============================================================
--- MIGRATION: If table already exists, run these ALTER commands:
--- ============================================================
--- ALTER TABLE ysof_notes ADD COLUMN IF NOT EXISTS likes INTEGER NOT NULL DEFAULT 0;
--- ALTER TABLE ysof_notes DROP CONSTRAINT IF EXISTS ysof_notes_theme_check;
--- ALTER TABLE ysof_notes ADD CONSTRAINT ysof_notes_theme_check CHECK (theme IN ('white', 'light-blue', 'dark-blue', 'mint-green', 'lavender', 'soft-pink', 'sun-peach'));
+-- 8) Useful indexes
+CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_created_at ON public.toi_va_ban_notes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_likes ON public.toi_va_ban_notes(likes DESC);
+CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_hidden ON public.toi_va_ban_notes(hidden) WHERE hidden = false;
+
+-- 9) Optional: migrate old data from ysof_notes (run once if needed)
+-- INSERT INTO public.toi_va_ban_notes (
+--   id, content, author, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, created_at
+-- )
+-- SELECT
+--   id, content, author, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, created_at
+-- FROM public.ysof_notes
+-- ON CONFLICT (id) DO NOTHING;

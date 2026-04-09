@@ -45,6 +45,10 @@ export const supabase = new Proxy({} as SupabaseClient, {
   },
 });
 
+export const NOTES_TABLE = 'toi_va_ban_notes';
+
+export const NOTE_COLUMNS = 'id, content, author, theme, x_percent, y_percent, rotation, likes, admin_reply, replied_at, hidden, created_at';
+
 export type Note = {
   id: string;
   content: string;
@@ -54,5 +58,44 @@ export type Note = {
   y_percent: number;
   rotation: number;
   likes: number;
+  admin_reply: string | null;
+  replied_at: string | null;
+  hidden: boolean;
   created_at: string;
 };
+
+const VALID_THEMES: Note['theme'][] = [
+  'white',
+  'light-blue',
+  'dark-blue',
+  'mint-green',
+  'lavender',
+  'soft-pink',
+  'sun-peach',
+];
+
+export function normalizeNote(raw: Partial<Note> & Record<string, unknown>): Note {
+  const theme = VALID_THEMES.includes(raw.theme as Note['theme'])
+    ? (raw.theme as Note['theme'])
+    : 'white';
+
+  const fallbackId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return {
+    id: String(raw.id || fallbackId),
+    content: String(raw.content || ''),
+    author: String(raw.author || 'Ẩn danh'),
+    theme,
+    x_percent: typeof raw.x_percent === 'number' ? raw.x_percent : 50,
+    y_percent: typeof raw.y_percent === 'number' ? raw.y_percent : 50,
+    rotation: typeof raw.rotation === 'number' ? raw.rotation : 0,
+    likes: typeof raw.likes === 'number' ? raw.likes : 0,
+    admin_reply: typeof raw.admin_reply === 'string' ? raw.admin_reply : null,
+    replied_at: typeof raw.replied_at === 'string' ? raw.replied_at : null,
+    hidden: typeof raw.hidden === 'boolean' ? raw.hidden : false,
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : new Date().toISOString(),
+  };
+}

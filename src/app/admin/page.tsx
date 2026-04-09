@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, Note } from '@/lib/supabase';
+import { supabase, Note, normalizeNote, NOTES_TABLE, NOTE_COLUMNS } from '@/lib/supabase';
+import { getSupabaseErrorInfo } from '@/lib/errors';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'ysof2025';
+import { useToast } from '@/components/Toast';
 
 const themeBgs: Record<string, string> = {
   white: '#fffef7',
@@ -26,23 +26,67 @@ export default function AdminPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'most-liked'>('newest');
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [savingReplyId, setSavingReplyId] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const { showToast } = useToast();
 
-  const handleLogin = () => {
-    if (password === ADMIN_PASSWORD) {
-      setIsAuth(true);
-      setAuthError('');
-      try {
-        sessionStorage.setItem('ysof_admin', 'true');
-      } catch { /* ignore */ }
-    } else {
-      setAuthError('Sai mật khẩu. Vui lòng thử lại.');
+  const handleLogin = async () => {
+    if (!password.trim()) {
+      setAuthError('Vui lòng nhập mật khẩu.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setAuthError('');
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setAuthError(data.error || 'Sai mật khẩu. Vui lòng thử lại.');
+      } else {
+        setIsAuth(true);
+        try {
+          sessionStorage.setItem('toi_va_ban_admin', 'true');
+          sessionStorage.setItem('toi_va_ban_admin_pw', password);
+        } catch { /* ignore */ }
+      }
+    } catch {
+      setAuthError('Không thể kết nối. Vui lòng thử lại.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
+
+  const getAdminPasswordForApi = useCallback(() => {
+    try {
+      return password || sessionStorage.getItem('toi_va_ban_admin_pw') || '';
+    } catch {
+      return password;
+    }
+  }, [password]);
 
   // Check session on mount
   useEffect(() => {
     try {
-      if (sessionStorage.getItem('ysof_admin') === 'true') {
+      const oldKey = 'ysof_admin';
+      const newKey = 'toi_va_ban_admin';
+      const oldValue = sessionStorage.getItem(oldKey);
+      const newValue = sessionStorage.getItem(newKey);
+      if (oldValue !== null && newValue === null) {
+        sessionStorage.setItem(newKey, oldValue);
+        sessionStorage.removeItem(oldKey);
+      }
+
+      if (sessionStorage.getItem(newKey) === 'true') {
         setIsAuth(true);
       }
     } catch { /* ignore */ }
@@ -56,14 +100,21 @@ export default function AdminPage() {
       setIsLoading(true);
       try {
         const { data, error } = await supabase
-          .from('ysof_notes')
-          .select('*')
+          .from(NOTES_TABLE)
+          .select(NOTE_COLUMNS)
           .order('created_at', { ascending: false });
 
         if (error) {
           console.error('Error fetching notes:', error);
         } else if (data) {
-          setNotes(data as Note[]);
+          const fetchedNotes = (data as Record<string, unknown>[]).map(normalizeNote);
+          setNotes(fetchedNotes);
+          setReplyDrafts(
+            fetchedNotes.reduce<Record<string, string>>((acc, note) => {
+              acc[note.id] = note.admin_reply || '';
+              return acc;
+            }, {})
+          );
         }
       } catch (err) {
         console.error('Exception fetching notes:', err);
@@ -76,24 +127,187 @@ export default function AdminPage() {
   }, [isAuth]);
 
   const handleDelete = useCallback(async (noteId: string) => {
-    const { error } = await supabase
-      .from('ysof_notes')
-      .delete()
-      .eq('id', noteId);
+    const pw = getAdminPasswordForApi();
+    if (!pw) {
+      setReplyError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      setDeleteConfirm(null);
+      return;
+    }
 
-    if (!error) {
+    const res = await fetch('/api/admin/delete-note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw, noteId }),
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      hint?: string;
+      code?: string;
+    };
+
+    if (!res.ok) {
+      const info = getSupabaseErrorInfo(payload);
+      setReplyError(
+        payload.error ||
+          info.hint ||
+          info.message ||
+          'Không thể xóa note lúc này. Vui lòng thử lại.'
+      );
+      console.error('Admin delete API error:', payload);
+    } else {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      showToast('Đã xóa note thành công!', 'success');
     }
     setDeleteConfirm(null);
-  }, []);
+  }, [getAdminPasswordForApi, showToast]);
+
+  const handleToggleVisibility = useCallback(async (noteId: string, currentHidden: boolean) => {
+    const pw = getAdminPasswordForApi();
+    if (!pw) {
+      setReplyError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    const res = await fetch('/api/admin/toggle-visibility', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw, noteId, hidden: !currentHidden }),
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      note?: { id: string; hidden: boolean };
+    };
+
+    if (!res.ok) {
+      setReplyError(payload.error || 'Không thể thay đổi trạng thái.');
+      console.error('Toggle visibility error:', payload);
+    } else {
+      setNotes((prev) =>
+        prev.map((n) => (n.id === noteId ? { ...n, hidden: !currentHidden } : n))
+      );
+      showToast(!currentHidden ? 'Đã ẩn note!' : 'Đã hiện note!', 'success');
+    }
+  }, [getAdminPasswordForApi, showToast]);
+
+  const handleReplyChange = useCallback((noteId: string, value: string) => {
+    if (replyError) setReplyError('');
+    setReplyDrafts((prev) => ({ ...prev, [noteId]: value }));
+  }, [replyError]);
+
+  const handleSaveReply = useCallback(async (noteId: string) => {
+    const rawReply = replyDrafts[noteId] || '';
+    const trimmedReply = rawReply.trim();
+    const replyText = trimmedReply ? trimmedReply.slice(0, 500) : null;
+
+    const pw = getAdminPasswordForApi();
+    if (!pw) {
+      setReplyError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    setSavingReplyId(noteId);
+    const res = await fetch('/api/admin/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw, noteId, reply: replyText }),
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      hint?: string;
+      code?: string;
+      note?: Record<string, unknown>;
+    };
+
+    setSavingReplyId(null);
+
+    if (!res.ok) {
+      const info = getSupabaseErrorInfo(payload);
+      console.error('Admin reply API error:', payload);
+      if (payload.code === '42703' || String(payload.error || '').includes('admin_reply')) {
+        setReplyError(
+          'Database chưa có cột admin_reply/replied_at. Hãy chạy migration mới trong supabase_schema.sql.'
+        );
+      } else {
+        setReplyError(
+          payload.error ||
+            info.hint ||
+            info.message ||
+            'Không thể lưu trả lời lúc này. Vui lòng thử lại.'
+        );
+      }
+      return;
+    }
+
+    const row = payload.note;
+    const nowIso =
+      typeof row?.replied_at === 'string'
+        ? row.replied_at
+        : replyText
+          ? new Date().toISOString()
+          : null;
+
+    setReplyError('');
+    setReplyDrafts((prev) => ({ ...prev, [noteId]: replyText || '' }));
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === noteId
+          ? {
+              ...n,
+              admin_reply: replyText,
+              replied_at: nowIso,
+            }
+          : n
+      )
+    );
+    showToast(replyText ? 'Đã lưu trả lời!' : 'Đã xóa trả lời!', 'success');
+  }, [replyDrafts, getAdminPasswordForApi, showToast]);
 
   const handleLogout = () => {
     setIsAuth(false);
     setPassword('');
     try {
-      sessionStorage.removeItem('ysof_admin');
+      sessionStorage.removeItem('toi_va_ban_admin');
+      sessionStorage.removeItem('toi_va_ban_admin_pw');
     } catch { /* ignore */ }
   };
+
+  const handleExportCSV = useCallback(async () => {
+    const pw = getAdminPasswordForApi();
+    if (!pw) {
+      showToast('Phiên đăng nhập hết hạn.', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/export-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Export thất bại.', 'error');
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `notes_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Đã tải xuống file CSV!', 'success');
+    } catch {
+      showToast('Export thất bại.', 'error');
+    }
+  }, [getAdminPasswordForApi, showToast]);
 
   // Filter and sort
   const displayedNotes = notes
@@ -143,7 +357,7 @@ export default function AdminPage() {
         >
           <div className="text-center mb-6">
             <span className="text-4xl mb-2 block">🔐</span>
-            <h1 className="text-xl font-bold text-gray-800">Quản trị YSOF Wall</h1>
+            <h1 className="text-xl font-bold text-gray-800">Quản trị Bức Tường</h1>
             <p className="text-sm text-gray-500 mt-1">Nhập mật khẩu để tiếp tục</p>
           </div>
 
@@ -152,9 +366,10 @@ export default function AdminPage() {
               type="password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setAuthError(''); }}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              onKeyDown={(e) => e.key === 'Enter' && !isLoggingIn && handleLogin()}
               placeholder="Mật khẩu..."
-              className="w-full px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/50 transition-all"
+              disabled={isLoggingIn}
+              className="w-full px-4 py-3 rounded-xl bg-white/70 border border-white/80 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/50 transition-all disabled:opacity-60"
             />
 
             {authError && (
@@ -163,9 +378,17 @@ export default function AdminPage() {
 
             <button
               onClick={handleLogin}
-              className="w-full py-3 rounded-xl text-white font-semibold bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 shadow-md hover:shadow-lg transition-all active:scale-95"
+              disabled={isLoggingIn}
+              className="w-full py-3 rounded-xl text-white font-semibold bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Đăng nhập
+              {isLoggingIn ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Đang xác thực...
+                </span>
+              ) : (
+                'Đăng nhập'
+              )}
             </button>
 
             <Link
@@ -192,11 +415,17 @@ export default function AdminPage() {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-              🛡️ Quản trị YSOF Wall
+              🛡️ Quản trị Bức Tường
             </h1>
             <p className="text-sm text-gray-500 mt-1">Quản lý tất cả note trên bức tường</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2 rounded-xl bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors"
+            >
+              📥 Export CSV
+            </button>
             <Link
               href="/wall"
               className="px-4 py-2 rounded-xl bg-sky-100 text-sky-700 text-sm font-semibold hover:bg-sky-200 transition-colors"
@@ -264,6 +493,11 @@ export default function AdminPage() {
 
       {/* Notes Table */}
       <div className="max-w-6xl mx-auto">
+        {replyError && (
+          <div className="mb-3 rounded-xl px-4 py-3 text-sm text-red-600 bg-red-50 border border-red-100">
+            {replyError}
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-10 h-10 border-4 border-sky-100 border-t-sky-400 rounded-full animate-spin" />
@@ -285,7 +519,12 @@ export default function AdminPage() {
                 }}
               >
                 {/* Content */}
-                <div className="flex-1 min-w-0">
+                <div className={`flex-1 min-w-0 ${note.hidden ? 'opacity-60' : ''}`}>
+                  {note.hidden && (
+                    <span className="inline-block mb-2 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-semibold uppercase tracking-wide">
+                      Đã ẩn
+                    </span>
+                  )}
                   <p className="text-sm sm:text-base text-gray-800 break-words" style={{ fontFamily: 'var(--font-handwriting)' }}>
                     &ldquo;{note.content}&rdquo;
                   </p>
@@ -296,10 +535,43 @@ export default function AdminPage() {
                     <span>•</span>
                     <span>💙 {note.likes || 0}</span>
                   </div>
+
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">
+                      Phản hồi từ admin
+                    </label>
+                    <textarea
+                      value={replyDrafts[note.id] ?? note.admin_reply ?? ''}
+                      onChange={(e) => handleReplyChange(note.id, e.target.value.slice(0, 500))}
+                      placeholder="Viết câu trả lời cho note này..."
+                      className="w-full min-h-[76px] rounded-lg border border-white/80 bg-white/70 px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300/50"
+                    />
+                    <div className="mt-1 text-[11px] text-gray-400 text-right">
+                      {(replyDrafts[note.id] ?? note.admin_reply ?? '').length}/500
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleSaveReply(note.id)}
+                    disabled={savingReplyId === note.id}
+                    className="px-3 py-1.5 rounded-lg bg-sky-50 text-sky-600 text-xs font-semibold hover:bg-sky-100 transition-colors active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {savingReplyId === note.id ? 'Đang lưu...' : '💬 Lưu trả lời'}
+                  </button>
+                  <button
+                    onClick={() => handleToggleVisibility(note.id, note.hidden)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors active:scale-95 ${
+                      note.hidden
+                        ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                    title={note.hidden ? 'Hiện note này trên tường' : 'Ẩn note này khỏi tường'}
+                  >
+                    {note.hidden ? '👁️ Hiện' : '🙈 Ẩn'}
+                  </button>
                   <AnimatePresence>
                     {deleteConfirm === note.id ? (
                       <motion.div

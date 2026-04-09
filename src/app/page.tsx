@@ -46,7 +46,7 @@ export default function Home() {
             </span>
             <br className="hidden sm:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-br from-sky-400 to-blue-600 block sm:inline-block">
-              Cho YSOF Trong Tương Lai
+              Cho Tôi Và Bạn Trong Tương Lai
             </span>
             <span className="inline-block animate-pulse ml-2 items-center">💙</span>
           </motion.h1>

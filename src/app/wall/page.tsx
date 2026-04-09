@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { supabase, Note } from '@/lib/supabase';
+import { supabase, Note, normalizeNote, NOTES_TABLE, NOTE_COLUMNS } from '@/lib/supabase';
 import StickyNote from '@/components/StickyNote';
 import FloatingButton from '@/components/FloatingButton';
 import WriteNoteModal from '@/components/WriteNoteModal';
@@ -86,14 +86,14 @@ export default function WallPage() {
     async function fetchNotes() {
       try {
         const { data, error } = await supabase
-          .from('ysof_notes')
-          .select('*')
+          .from(NOTES_TABLE)
+          .select(NOTE_COLUMNS)
           .order('created_at', { ascending: true });
 
         if (error) {
           console.error('Error fetching notes:', error);
         } else if (data) {
-          setNotes(data as Note[]);
+          setNotes((data as Record<string, unknown>[]).map(normalizeNote));
         }
       } catch (err) {
         console.error('Exception fetching notes:', err);
@@ -108,12 +108,12 @@ export default function WallPage() {
   // Subscribe to realtime inserts
   useEffect(() => {
     const channel = supabase
-      .channel('ysof_notes_realtime')
+      .channel(`${NOTES_TABLE}_realtime`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ysof_notes' },
+        { event: 'INSERT', schema: 'public', table: NOTES_TABLE },
         (payload) => {
-          const newNote = payload.new as Note;
+          const newNote = normalizeNote(payload.new as Record<string, unknown>);
           setNotes((prev) => {
             if (prev.some((n) => n.id === newNote.id)) return prev;
             return [...prev, newNote];
@@ -126,6 +126,17 @@ export default function WallPage() {
               return next;
             });
           }, 1500);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: NOTES_TABLE },
+        (payload) => {
+          const updatedNote = normalizeNote(payload.new as Record<string, unknown>);
+          setNotes((prev) => prev.map((n) => (n.id === updatedNote.id ? { ...n, ...updatedNote } : n)));
+          setSelectedNote((prev) =>
+            prev && prev.id === updatedNote.id ? { ...prev, ...updatedNote } : prev
+          );
         }
       )
       .subscribe();
