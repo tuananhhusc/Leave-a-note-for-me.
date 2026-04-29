@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { supabase, Note, normalizeNote, NOTES_TABLE } from '@/lib/supabase';
+import { Note, normalizeNote } from '@/lib/supabase';
 import { containsProfanity, getProfanityWarning } from '@/lib/profanity';
 import { getSupabaseErrorInfo } from '@/lib/errors';
 import { useToast } from '@/components/Toast';
@@ -27,6 +27,29 @@ type WriteNoteModalProps = {
   onNoteCreated?: (note: Note) => void;
 };
 
+async function createDeviceFingerprint(): Promise<string> {
+  if (typeof window === 'undefined') return 'server';
+  const parts = [
+    navigator.userAgent || '',
+    navigator.language || '',
+    String(new Date().getTimezoneOffset()),
+    navigator.platform || '',
+    String(window.screen?.width || 0),
+    String(window.screen?.height || 0),
+    String(window.devicePixelRatio || 1),
+  ];
+  const raw = parts.join('|');
+
+  if (window.crypto?.subtle && typeof TextEncoder !== 'undefined') {
+    const data = new TextEncoder().encode(raw);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  return raw;
+}
+
 export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: WriteNoteModalProps) {
   const [content, setContent] = useState('');
   const [author, setAuthor] = useState('');
@@ -34,7 +57,6 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
   const [theme, setTheme] = useState<Theme>('white');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [hasWrittenBefore, setHasWrittenBefore] = useState(false);
   const { showToast } = useToast();
   const modalRef = useRef<HTMLDivElement>(null);
   const firstFocusRef = useRef<HTMLTextAreaElement>(null);
@@ -70,27 +92,6 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     if (isOpen && firstFocusRef.current) {
       setTimeout(() => firstFocusRef.current?.focus(), 100);
     }
-  }, [isOpen, hasWrittenBefore]);
-
-  useEffect(() => {
-    if (isOpen && typeof window !== 'undefined') {
-      try {
-        const oldKey = 'ysof_note_written';
-        const newKey = 'toi_va_ban_note_written';
-        const oldValue = localStorage.getItem(oldKey);
-        const newValue = localStorage.getItem(newKey);
-        if (oldValue !== null && newValue === null) {
-          localStorage.setItem(newKey, oldValue);
-          localStorage.removeItem(oldKey);
-        }
-
-        if (localStorage.getItem(newKey) === 'true') {
-          setHasWrittenBefore(true);
-        }
-      } catch (e) {
-        // Ignore localStorage access errors
-      }
-    }
   }, [isOpen]);
 
   const maxChars = 400;
@@ -121,54 +122,46 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
     setIsSubmitting(true);
     setError('');
 
-    const x_percent = 5 + Math.random() * 90;
-    const y_percent = 10 + Math.random() * 75;
-    const rotation = -10 + Math.random() * 20;
-
-    const noteData = {
-      content: content.trim(),
-      author: author.trim() || 'Ẩn danh',
-      email: email.trim(),
-      theme,
-      x_percent: parseFloat(x_percent.toFixed(2)),
-      y_percent: parseFloat(y_percent.toFixed(2)),
-      rotation: parseFloat(rotation.toFixed(2)),
-    };
-
-    const { data, error: dbError } = await supabase
-      .from(NOTES_TABLE)
-      .insert([noteData])
-      .select()
-      .single();
-
-    setIsSubmitting(false);
-
-    if (dbError) {
-      const info = getSupabaseErrorInfo(dbError);
-      setError(info.hint || info.message || 'Có lỗi xảy ra. Hãy thử lại nhé!');
-      console.error('Supabase insert error:', info);
-      return;
-    }
-
-    if (data && onNoteCreated) {
-      onNoteCreated(normalizeNote(data as Record<string, unknown>));
-    }
-
     try {
-      localStorage.setItem('toi_va_ban_note_written', 'true');
-      setHasWrittenBefore(true);
-    } catch (e) {
-      // Ignore localStorage access errors
+      const fingerprint = await createDeviceFingerprint();
+      const res = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: content.trim(),
+          author: author.trim() || 'Ẩn danh',
+          email: email.trim(),
+          theme,
+          fingerprint,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        const info = getSupabaseErrorInfo(json);
+        setError(info.hint || info.message || json.error || 'Có lỗi xảy ra. Hãy thử lại nhé!');
+        return;
+      }
+
+      if (json.note && onNoteCreated) {
+        onNoteCreated(normalizeNote(json.note as Record<string, unknown>));
+      }
+
+      showToast('Note của bạn đã được dán lên tường! 📌', 'success');
+
+      // Reset form
+      setContent('');
+      setAuthor('');
+      setEmail('');
+      setTheme('white');
+      onClose();
+    } catch (err) {
+      const info = getSupabaseErrorInfo(err);
+      setError(info.hint || info.message || 'Có lỗi xảy ra. Hãy thử lại nhé!');
+      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    showToast('Note của bạn đã được dán lên tường! 📌', 'success');
-
-    // Reset form
-    setContent('');
-    setAuthor('');
-    setEmail('');
-    setTheme('white');
-    onClose();
   }, [content, author, email, theme, onClose, onNoteCreated, showToast]);
 
   return (
@@ -212,27 +205,14 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
             {/* Header */}
             <div className="text-center mb-6">
               <h2 id="write-note-title" className="text-xl sm:text-2xl font-bold text-gray-800">
-                {hasWrittenBefore ? 'Cảm ơn bạn nhé! 💖' : '✏️ Viết một note'}
+                ✏️ Viết một note
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                {hasWrittenBefore 
-                  ? 'Bạn đã để lại một note rồi. Bức tường xin giữ lại mảnh ký ức này nhé!'
-                  : 'Để lại một mảnh ký ức cho Tôi và Bạn'}
+                Để lại một mảnh ký ức cho Tôi và Bạn
               </p>
             </div>
 
-            {hasWrittenBefore ? (
-              <div className="flex justify-center mt-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full sm:w-auto px-10 py-3 rounded-xl text-white font-semibold bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 shadow-md hover:shadow-lg transition-all active:scale-95"
-                >
-                  Tuyệt vời!
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {/* Form */}
                 {/* Content textarea */}
                 <div>
@@ -367,13 +347,10 @@ export default function WriteNoteModal({ isOpen, onClose, onNoteCreated }: Write
                         <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Đang dán...
                       </span>
-                    ) : (
-                      '📌 Dán lên tường'
-                    )}
+                    ) : '📌 Dán lên tường'}
                   </button>
                 </div>
-              </div>
-            )}
+            </div>
           </motion.div>
         </motion.div>
       )}

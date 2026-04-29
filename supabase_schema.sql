@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS public.toi_va_ban_notes (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Device rate-limit logs (server-side daily limit)
+CREATE TABLE IF NOT EXISTS public.toi_va_ban_note_rate_limits (
+  id BIGSERIAL PRIMARY KEY,
+  fingerprint_hash TEXT NOT NULL,
+  note_id UUID REFERENCES public.toi_va_ban_notes(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 2) Safe migrations for existing tables
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 ALTER TABLE public.toi_va_ban_notes ADD COLUMN IF NOT EXISTS likes INTEGER NOT NULL DEFAULT 0;
@@ -63,6 +71,7 @@ $$;
 
 -- 4) Enable RLS
 ALTER TABLE public.toi_va_ban_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.toi_va_ban_note_rate_limits ENABLE ROW LEVEL SECURITY;
 
 -- 5) Remove old permissive policies (if present)
 DROP POLICY IF EXISTS "Anyone can read notes" ON public.toi_va_ban_notes;
@@ -119,6 +128,7 @@ CREATE POLICY "Admin can delete notes"
 CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_created_at ON public.toi_va_ban_notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_likes ON public.toi_va_ban_notes(likes DESC);
 CREATE INDEX IF NOT EXISTS idx_toi_va_ban_notes_hidden ON public.toi_va_ban_notes(hidden) WHERE hidden = false;
+CREATE INDEX IF NOT EXISTS idx_toi_va_ban_rate_fingerprint_created_at ON public.toi_va_ban_note_rate_limits(fingerprint_hash, created_at DESC);
 
 -- 9) Optional: migrate old data from ysof_notes (run once if needed)
 -- INSERT INTO public.toi_va_ban_notes (
